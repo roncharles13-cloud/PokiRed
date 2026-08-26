@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokémon Red — Starter Edition</title>
+<style>
+  :root { --bg:#12161d; --panel:#1b2129; --ink:#e8ecf1; --accent:#e23a3a; --line:#2c3542; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(1200px 800px at 50% -10%, #1c2635, var(--bg));
+    color:var(--ink); font-family:'Segoe UI',system-ui,sans-serif; display:flex; flex-direction:column;
+    align-items:center; gap:16px; padding:22px 14px 40px; }
+  h1 { margin:2px 0 0; font-size:22px; letter-spacing:1px; }
+  h1 b { color:var(--accent); }
+  .sub { opacity:.6; font-size:13px; margin-top:-6px; }
+  #screen { image-rendering:pixelated; width:480px; height:432px; max-width:96vw; max-height:calc(96vw*.9);
+    background:#0a0d12; border:2px solid var(--line); border-radius:8px; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 16px;
+    display:flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  button, label.file { background:#26374a; color:#fff; border:0; border-radius:8px; padding:9px 16px;
+    font-weight:700; cursor:pointer; font-size:14px; }
+  button:hover, label.file:hover { background:#2f4560; }
+  #status { font-size:13px; opacity:.85; min-height:18px; }
+  .keys { display:flex; gap:16px; flex-wrap:wrap; justify-content:center; font-size:13px; opacity:.85; }
+  .keys kbd { background:#26374a; border-radius:4px; padding:1px 7px; font-weight:700; }
+  .mods { max-width:520px; font-size:13px; line-height:1.5; opacity:.9; background:var(--panel);
+    border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:8px; padding:10px 14px; }
+  .mods b { color:#ffcf6a; }
+</style>
+</head>
+<body>
+  <h1>Pokémon <b>Red</b> — Starter Edition</h1>
+  <div class="sub">a modded ROM, played in your browser</div>
+
+  <canvas id="screen" width="160" height="144"></canvas>
+
+  <div class="panel">
+    <label class="file">Load ROM<input id="file" type="file" accept=".gb,.gbc" hidden></label>
+    <button id="reset">Reset</button>
+    <button id="sound">🔈 Sound: on</button>
+    <span id="status">Loading…</span>
+  </div>
+
+  <div class="keys">
+    <span><kbd>← ↑ ↓ →</kbd> move</span>
+    <span><kbd>X</kbd> A</span>
+    <span><kbd>Z</kbd> B</span>
+    <span><kbd>Enter</kbd> Start</span>
+    <span><kbd>Shift</kbd> Select</span>
+  </div>
+
+  <div class="mods">
+    <b>Mods in this build:</b> Bulbasaur roams Viridian Forest 🌱 · Charmander roams Route 4 🔥 ·
+    Squirtle roams Route 25 💧 · Kadabra evolves into Alakazam at <b>Lv 38</b> (no trade needed).
+  </div>
+
+  <!-- self-hosted GameBoy-Online emulator (pure JS, offline) -->
+  <script src="vendor/gbo/js/other/base64.js"></script>
+  <script src="vendor/gbo/js/other/resampler.js"></script>
+  <script src="vendor/gbo/js/other/XAudioServer.js"></script>
+  <script src="vendor/gbo/js/GameBoyCore.js"></script>
+  <script src="vendor/gbo/js/GameBoyIO.js"></script>
+  <script>
+    // --- minimal stubs the core expects (no DOM terminal / cookie GUI) ---
+    function cout() {}
+    const _store = {
+      get(k){ try { return JSON.parse(localStorage.getItem("gbo_"+k)); } catch(e){ return null; } },
+    };
+    function findValue(k){ return _store.get(k); }
+    function setValue(k,v){ try { localStorage.setItem("gbo_"+k, JSON.stringify(v)); } catch(e){} }
+    function deleteValue(k){ try { localStorage.removeItem("gbo_"+k); } catch(e){} }
+
+    const canvas = document.getElementById("screen");
+    const statusEl = document.getElementById("status");
+    const setStatus = t => statusEl.textContent = t;
+
+    function toBinaryString(u8){
+      let s = "", CH = 0x8000;
+      for (let i=0; i<u8.length; i+=CH) s += String.fromCharCode.apply(null, u8.subarray(i, i+CH));
+      return s;
+    }
+    function boot(arrayBuffer){
+      try {
+        const rom = toBinaryString(new Uint8Array(arrayBuffer));
+        start(canvas, rom);           // GameBoy-Online entry
+        setStatus("Playing ▶  (click the screen if keys don't respond)");
+        canvas.focus();
+      } catch(e){ setStatus("Failed to start: " + e.message); console.error(e); }
+    }
+
+    // file picker
+    document.getElementById("file").addEventListener("change", e => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = () => boot(r.result);
+      r.readAsArrayBuffer(f);
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      if (typeof GameBoyEmulatorInitialized === "function" && GameBoyEmulatorInitialized()) start(canvas, gameboy.getROMImage());
+    });
+    document.getElementById("sound").addEventListener("click", e => {
+      settings[0] = !settings[0];
+      e.target.textContent = "🔈 Sound: " + (settings[0] ? "on" : "off");
+    });
+
+    // keyboard -> gameboy
+    const KEYMAP = { ArrowRight:"right", ArrowLeft:"left", ArrowUp:"up", ArrowDown:"down",
+      KeyX:"a", KeyZ:"b", Enter:"start", ShiftLeft:"select", ShiftRight:"select" };
+    addEventListener("keydown", e => { const k = KEYMAP[e.code]; if (k){ e.preventDefault(); GameBoyKeyDown(k); } });
+    addEventListener("keyup",   e => { const k = KEYMAP[e.code]; if (k){ e.preventDefault(); GameBoyKeyUp(k); } });
+
+    // auto-load a local red_mod.gb if it's sitting next to index.html (never committed)
+    fetch("red_mod.gb").then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+      .then(boot)
+      .catch(() => setStatus("Click “Load ROM” and choose your Pokémon Red .gb"));
+  </script>
+</body>
+</html>
