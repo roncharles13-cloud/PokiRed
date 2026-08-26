@@ -38,6 +38,7 @@
     <label class="file">Load ROM<input id="file" type="file" accept=".gb,.gbc" hidden></label>
     <button id="reset">Reset</button>
     <button id="sound">🔈 Sound: on</button>
+    <button id="forget" title="Remove the ROM saved in this browser">Forget ROM</button>
     <span id="status">Loading…</span>
   </div>
 
@@ -79,20 +80,38 @@
       for (let i=0; i<u8.length; i+=CH) s += String.fromCharCode.apply(null, u8.subarray(i, i+CH));
       return s;
     }
-    function boot(arrayBuffer){
+
+    // --- remember the ROM in THIS browser (IndexedDB) so it auto-plays next time.
+    //     The ROM never leaves your device; nothing is uploaded. ---
+    function idb(mode, fn){
+      return new Promise((res, rej) => {
+        const rq = indexedDB.open("pokered_web", 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore("rom");
+        rq.onerror = () => rej(rq.error);
+        rq.onsuccess = () => {
+          const tx = rq.result.transaction("rom", mode);
+          const r = fn(tx.objectStore("rom"));
+          tx.oncomplete = () => res(r && r.result);
+          tx.onerror = () => rej(tx.error);
+        };
+      });
+    }
+    const saveROM = buf => idb("readwrite", s => s.put(buf, "rom")).catch(()=>{});
+    const loadSavedROM = () => idb("readonly", s => s.get("rom")).catch(()=>null);
+
+    function boot(arrayBuffer, remember){
       try {
-        const rom = toBinaryString(new Uint8Array(arrayBuffer));
-        start(canvas, rom);           // GameBoy-Online entry
+        start(canvas, toBinaryString(new Uint8Array(arrayBuffer)));   // GameBoy-Online entry
         setStatus("Playing ▶  (click the screen if keys don't respond)");
         canvas.focus();
+        if (remember) saveROM(arrayBuffer);
       } catch(e){ setStatus("Failed to start: " + e.message); console.error(e); }
     }
 
-    // file picker
     document.getElementById("file").addEventListener("change", e => {
       const f = e.target.files[0]; if (!f) return;
       const r = new FileReader();
-      r.onload = () => boot(r.result);
+      r.onload = () => boot(r.result, true);   // load once -> remembered forever on this browser
       r.readAsArrayBuffer(f);
     });
     document.getElementById("reset").addEventListener("click", () => {
@@ -102,6 +121,10 @@
       settings[0] = !settings[0];
       e.target.textContent = "🔈 Sound: " + (settings[0] ? "on" : "off");
     });
+    document.getElementById("forget").addEventListener("click", async () => {
+      await idb("readwrite", s => s.delete("rom")).catch(()=>{});
+      setStatus("Forgot the saved ROM. Click “Load ROM” to pick one again.");
+    });
 
     // keyboard -> gameboy
     const KEYMAP = { ArrowRight:"right", ArrowLeft:"left", ArrowUp:"up", ArrowDown:"down",
@@ -109,10 +132,16 @@
     addEventListener("keydown", e => { const k = KEYMAP[e.code]; if (k){ e.preventDefault(); GameBoyKeyDown(k); } });
     addEventListener("keyup",   e => { const k = KEYMAP[e.code]; if (k){ e.preventDefault(); GameBoyKeyUp(k); } });
 
-    // auto-load a local red_mod.gb if it's sitting next to index.html (never committed)
-    fetch("red_mod.gb").then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
-      .then(boot)
-      .catch(() => setStatus("Click “Load ROM” and choose your Pokémon Red .gb"));
+    // boot order: 1) ROM you saved in this browser  2) a local red_mod.gb next to the page
+    //             3) otherwise prompt you to Load ROM once
+    (async () => {
+      const saved = await loadSavedROM();
+      if (saved && saved.byteLength) { setStatus("Loaded your saved ROM ▶"); return boot(saved, false); }
+      try {
+        const buf = await fetch("red_mod.gb").then(r => r.ok ? r.arrayBuffer() : Promise.reject());
+        boot(buf, true);
+      } catch { setStatus("Click “Load ROM”, pick your Pokémon Red .gb once — this browser will remember it."); }
+    })();
   </script>
 </body>
 </html>
