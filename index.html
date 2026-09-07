@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pokémon Red — Starter Edition</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#12161d">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root { --bg:#12161d; --panel:#1b2129; --ink:#e8ecf1; --accent:#e23a3a; --line:#2c3542; }
   * { box-sizing:border-box; }
@@ -62,6 +65,9 @@
   <script src="vendor/gbo/js/GameBoyCore.js"></script>
   <script src="vendor/gbo/js/GameBoyIO.js"></script>
   <script>
+    // register the service worker so this installs as an offline Windows app
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
     // --- minimal stubs the core expects (no DOM terminal / cookie GUI) ---
     function cout() {}
     const _store = {
