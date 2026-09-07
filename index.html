@@ -105,12 +105,28 @@
     const saveROM = buf => idb("readwrite", s => s.put(buf, "rom")).catch(()=>{});
     const loadSavedROM = () => idb("readonly", s => s.get("rom")).catch(()=>null);
 
-    function boot(arrayBuffer, remember){
+    // the mod patch (only the changes, ~53 bytes) — applied to whatever clean ROM you load
+    let PATCH = null;
+    const patchReady = fetch("mod.ips").then(r => r.ok ? r.arrayBuffer() : Promise.reject())
+      .then(b => { PATCH = new Uint8Array(b); }).catch(() => { PATCH = null; });
+    function applyIps(rom, patch){
+      if (!patch) return rom;
+      const out = rom.slice(); let p = 5;                       // skip "PATCH"
+      while (!(patch[p] === 0x45 && patch[p+1] === 0x4F && patch[p+2] === 0x46)) {  // until "EOF"
+        const off = (patch[p] << 16) | (patch[p+1] << 8) | patch[p+2];
+        const size = (patch[p+3] << 8) | patch[p+4]; p += 5;
+        out.set(patch.subarray(p, p + size), off); p += size;
+      }
+      return out;
+    }
+    async function boot(arrayBuffer, remember){
       try {
-        start(canvas, toBinaryString(new Uint8Array(arrayBuffer)));   // GameBoy-Online entry
-        setStatus("Playing ▶  (click the screen if keys don't respond)");
+        await patchReady;
+        const patched = applyIps(new Uint8Array(arrayBuffer), PATCH);   // clean ROM + your mods
+        start(canvas, toBinaryString(patched));                          // GameBoy-Online entry
+        setStatus(PATCH ? "Playing ▶  (mods applied)" : "Playing ▶");
         canvas.focus();
-        if (remember) saveROM(arrayBuffer);
+        if (remember) saveROM(arrayBuffer);          // remember the clean ROM you loaded
       } catch(e){ setStatus("Failed to start: " + e.message); console.error(e); }
     }
 
@@ -146,7 +162,7 @@
       try {
         const buf = await fetch("red_mod.gb").then(r => r.ok ? r.arrayBuffer() : Promise.reject());
         boot(buf, true);
-      } catch { setStatus("Click “Load ROM”, pick your Pokémon Red .gb once — this browser will remember it."); }
+      } catch { setStatus("Load your Pokémon Red .gb once — the mods apply automatically and this browser remembers it."); }
     })();
   </script>
 </body>

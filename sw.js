@@ -1,8 +1,8 @@
 // Service worker: cache the app shell so the installed PWA runs offline.
 // The ROM is never cached here — it lives in the browser's IndexedDB.
-const CACHE = "red-se-v2";
+const CACHE = "red-se-v3";
 const SHELL = [
-  "./", "index.html", "manifest.json",
+  "./", "index.html", "manifest.json", "mod.ips",
   "vendor/gbo/js/other/base64.js",
   "vendor/gbo/js/other/resampler.js",
   "vendor/gbo/js/other/XAudioServer.js",
